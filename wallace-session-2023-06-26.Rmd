@@ -1,0 +1,487 @@
+Wallace Session 2023-06-26
+================
+
+Please find below the R code history from your *Wallace* v2.0.5 session.
+
+You can reproduce your session results by running this R Markdown file
+in RStudio.
+
+Each code block is called a “chunk”, and you can run them either
+one-by-one or all at once by choosing an option in the “Run” menu at the
+top-right corner of the “Source” pane in RStudio.
+
+For more detailed information see <http://rmarkdown.rstudio.com>).
+
+### Package installation
+
+Wallace uses the following R packages that must be installed and loaded
+before starting.
+
+```{r}
+library(spocc)
+library(spThin)
+library(dismo)
+library(rgeos)
+library(ENMeval)
+library(wallace)
+```
+
+The *Wallace* session code .Rmd file is composed of a chain of module
+functions that are internal to *Wallace*. Each of these functions
+corresponds to a single module that the user ran during the session. To
+see the internal code for these module functions, click on the links in
+the .Rmd file. Users are encouraged to write custom code in the .Rmd
+directly to modify their analysis, and even modify the module function
+code to further customize. To see the source code for any module
+function, just type its name into the R console and press Return.
+
+```{r}
+# example:
+# just type the function name and press Return to see its source code
+# paste this code into a new script to edit it
+occs_queryDb
+```
+
+Your analyses are below.
+
+------------------------------------------------------------------------
+
+## Analysis for *Carcharhinus perezi* (Cp)
+
+### Obtain Occurrence Data
+
+You searched the gbif database for *Carcharhinus perezi*, limited to
+5000 records. You decided to remove occurrences without uncertainty
+information? FALSE
+
+```{r}
+# Query selected database for occurrence records
+queryDb_Cp <- occs_queryDb(
+  spNames = "Carcharhinus perezi", 
+  occDb = "gbif", 
+  occNum = 5000,
+  RmUncertain = FALSE)
+occs_Cp <- queryDb_Cp$Carcharhinus_perezi$cleaned
+```
+
+### Obtain environmental data
+
+Using user-specified variables.
+
+```{r}
+## Specify the directory with the environmental variables
+dir_envs_Cp <- "D:/Wallace/GIT/MARSPECTca"
+envs_path <- file.path(dir_envs_Cp, c('b1_EastWestAspect.tif', 'b2_NorthSouthAspect.tif', 'b3_PlanCurvature.tif', 'b4_ProfileCurvature.tif', 'b5_DistancetoShore.tif', 'b6_BathymetricSlope.tif', 'b7_Concavity.tif', 'b8_MeanAnnualSSS.tif', 'b9_MinimumMonthlySSS.tif', 'b10_MaximumMonthlySSS.tif', 'b11_AnnualRangeSSS.tif', 'b12_AnnualVarianceSSS.tif', 'b13_MeanAnnualSST.tif', 'b14_SSTcoldestIceFreeMonth.tif', 'b15_SSTwarmestIceFreeMonth.tif', 'b16_AnnualRangeSST.tif', 'b17_AnnualVarianceSST.tif', 'bathymetry_30s.tif'))
+# Create environmental object 
+envs_Cp <- envs_userEnvs(
+  rasPath = envs_path,
+  rasName = c('b1_EastWestAspect.tif', 'b2_NorthSouthAspect.tif', 'b3_PlanCurvature.tif', 'b4_ProfileCurvature.tif', 'b5_DistancetoShore.tif', 'b6_BathymetricSlope.tif', 'b7_Concavity.tif', 'b8_MeanAnnualSSS.tif', 'b9_MinimumMonthlySSS.tif', 'b10_MaximumMonthlySSS.tif', 'b11_AnnualRangeSSS.tif', 'b12_AnnualVarianceSSS.tif', 'b13_MeanAnnualSST.tif', 'b14_SSTcoldestIceFreeMonth.tif', 'b15_SSTwarmestIceFreeMonth.tif', 'b16_AnnualRangeSST.tif', 'b17_AnnualVarianceSST.tif', 'bathymetry_30s.tif'),
+  doBrick = FALSE)
+occs_xy_Cp <- occs_Cp[c('longitude', 'latitude')]
+occs_vals_Cp <- as.data.frame(raster::extract(envs_Cp, occs_xy_Cp, cellnumbers = TRUE))
+# Remove duplicated same cell values
+occs_Cp <- occs_Cp[!duplicated(occs_vals_Cp[, 1]), ]
+occs_vals_Cp <- occs_vals_Cp[!duplicated(occs_vals_Cp[, 1]), -1]
+# remove occurrence records with NA environmental values
+occs_Cp <- occs_Cp[!(rowSums(is.na(occs_vals_Cp)) >= 1), ]
+# also remove variable value rows with NA environmental values
+occs_vals_Cp <- na.omit(occs_vals_Cp)
+# add columns for env variable values for each occurrence record
+occs_Cp <- cbind(occs_Cp, occs_vals_Cp)
+```
+
+### Process Occurrence Data
+
+Remove occurrences outside of user drawn polygon
+
+```{r}
+occs_Cp <- poccs_selectOccs(
+  occs = occs_Cp,
+  polySelXY = matrix(c(-79.168605, -82.685205, -82.575312, -79.322456, -75.564089, -71.080423, -69.036399, -66.596757, -63.124114, -63.431817, -64.069201, -64.420861, -65.387926, -70.706784, -74.443172, -77.652071, -78.487263, -79.168605, 16.782519, 14.39112, 11.414408, 10.400365, 11.048027, 12.767942, 13.003554, 11.479015, 11.608185, 15.600883, 17.181795, 17.977753, 17.873223, 17.47545, 17.517362, 17.496407, 17.47545, 16.782519), ncol = 2, byrow = FALSE),
+  polySelID = 1607)
+```
+
+### Process environmental data
+
+Sampling of 100 background points and corresponding environmental data
+using a user drawn background extent with a 0 degree buffer.
+
+```{r}
+# Create a background extent based on user drawn polygon
+bgExt_Cp <- penvs_drawBgExtent(
+  polyExtXY = matrix(c(-80.071559, -82.665052, -82.665052, -81.170497, -78.401174, -78.168427, -77.662916, -76.135392, -75.739775, -75.080412, -74.497975, -73.662782, -72.585823, -71.607769, -69.434351, -68.060679, -65.115526, -62.56599, -61.51101, -61.693613, -62.572763, -64.111276, -68.023494, -71.408222, -74.79295, -78.177679, -79.452446, -80.071559, 16.928734, 14.815379, 11.262592, 9.75034, 9.793648, 9.426879, 9.144978, 9.719378, 10.573716, 11.134782, 11.231781, 11.382604, 12.038817, 12.671994, 12.822012, 11.705526, 10.951473, 11.350292, 13.656162, 16.043834, 17.51638, 17.976774, 17.264761, 17.432545, 17.264761, 17.264761, 17.432545, 16.928734),ncol=2,byrow=FALSE), 
+  polyExtID = 6923, 
+  drawBgBuf = 0, 
+  occs = occs_Cp)
+# Mask environmental data to provided extent
+bgMask_Cp <- penvs_bgMask(
+  occs = occs_Cp,
+  envs = envs_Cp,
+  bgExt = bgExt_Cp)
+# Sample background points from the provided area
+bgSample_Cp <- penvs_bgSample(
+  occs = occs_Cp,
+  bgMask =  bgMask_Cp,
+  bgPtsNum = 100)
+# Extract values of environmental layers for each background point
+bgEnvsVals_Cp <- as.data.frame(raster::extract(bgMask_Cp,  bgSample_Cp))
+##Add extracted values to background points table
+bgEnvsVals_Cp <- cbind(scientific_name = paste0("bg_", "Carcharhinus perezi"), bgSample_Cp,
+                            occID = NA, year = NA, institution_code = NA, country = NA,
+                            state_province = NA, locality = NA, elevation = NA,
+                            record_type = NA, bgEnvsVals_Cp)
+```
+
+
+### Partition occurrence data
+
+Partition occurrences and background points for model training and
+validation using “checkerboard”, a spatial partition method with an
+aggregation factor of 2.
+
+```{r}
+# R code to get partitioned data
+groups_Cp <- part_partitionOccs(
+  occs = occs_Cp ,
+  bg =  bgSample_Cp, 
+  method = "cb1",
+  bgMask = bgMask_Cp,
+  aggFact = 2) 
+```
+
+### Build and Evaluate Niche Model
+
+Generating a species distribution model using the maxnet algorithm as
+implemented in ENMeval V2.0 (with clamping = FALSE). For tuning using L,
+H feature classes and regularization multipliers in the 1, 2 range
+increasing by 1. Not using any categorical predictor variables.
+
+```{r}
+# Run maxent model for the selected species
+model_Cp <- model_maxent(
+  occs = occs_Cp,
+  bg = bgEnvsVals_Cp,
+  user.grp = groups_Cp, 
+  bgMsk = bgMask_Cp,
+  rms = c(1, 2), 
+  rmsStep =  1,
+  fcs = c('L', 'H'),
+  clampSel = FALSE,
+  algMaxent = "maxnet",
+  parallel = FALSE,
+  numCores = 11)
+```
+
+### Visualize
+
+Generate a map of the maxnet generated model with with a “p10” threshold
+rule of 0.594019483220571.
+
+```{r}
+# Select current model and obtain raster prediction
+m_Cp <- model_Cp@models[["fc.H_rm.1"]] 
+predSel_Cp <- predictMaxnet(m_Cp, bgMask_Cp,
+                                          type = "cloglog", 
+                                          clamp = FALSE)
+# extract the suitability values for all occurrences
+occs_xy_Cp <- occs_Cp[c('longitude', 'latitude')]
+# determine the threshold based on the current prediction
+occPredVals_Cp <- raster::extract(predSel_Cp, occs_xy_Cp)
+# Define probability of quantile based on selected threshold
+thresProb_Cp <- switch("p10", 
+                              "mtp" = 0, "p10" = 0.1, "qtp" = 0)
+# Define threshold value
+thres_Cp <- stats::quantile(occPredVals_Cp, probs = thresProb_Cp)
+# Applied selected threshold
+predSel_Cp <- predSel_Cp > thres_Cp
+
+# Get values of prediction
+mapPredVals_Cp <- getRasterVals(predSel_Cp, "cloglog")
+# Define colors and legend  
+rasCols <- c("#2c7bb6", "#abd9e9", "#ffffbf", "#fdae61", "#d7191c")
+legendPal <- colorNumeric(rev(rasCols), mapPredVals_Cp, na.color = 'transparent')
+rasPal <- c('gray', 'blue')
+# Generate map
+m <- leaflet() %>% addProviderTiles(providers$Esri.WorldTopoMap) 
+m  %>%
+  leaflet::addLegend("bottomright", colors = c('gray', 'blue'),
+            title = "Thresholded Suitability<br>(Training)",
+            labels = c("predicted absence", "predicted presence"),
+            opacity = 1, layerId = "train") %>% 
+  #add occurrence data
+  addCircleMarkers(data = occs_Cp, lat = ~latitude, lng = ~longitude,
+                   radius = 5, color = 'red', fill = TRUE, fillColor = "red",
+                   fillOpacity = 0.2, weight = 2, popup = ~pop) %>% 
+  ##Add model prediction
+  addRasterImage(predSel_Cp, colors = rasPal, opacity = 0.7,
+                 group = 'vis', layerId = 'mapPred', method = "ngb") %>%
+ ##add background polygons
+  addPolygons(data = bgExt_Cp, fill = FALSE,
+              weight = 4, color = "blue", group = 'proj')
+```
+
+```{r}
+# First must generate the transfer area according to the drawn polygon in the GUI
+xfer_draw_Cp <-xfer_draw(
+  polyXfXY = matrix(c(-81.169716, -81.125759, -83.675294, -85.653382, -84.994019, -83.015931, -81.169716, 21.655514, 23.320188, 23.763352, 23.320188, 21.205538, 21.164563, 21.655514),ncol=2,byrow=FALSE),
+  polyXfID = 7698,
+  drawXfBuf = 0)
+# Create object of transfer variables
+xferAreaEnvs_Cp <- envs_Cp
+# Generate a transfer of the model to the desired area
+xfer_area_Cp <- xfer_area(
+  evalOut = model_Cp,
+  curModel = "fc.H_rm.1",
+  envs = xferAreaEnvs_Cp , 
+  outputType = "cloglog",
+  alg = "maxnet",
+  clamp = FALSE,
+  xfExt = xfer_draw_Cp) 
+# store the cropped transfer variables
+xferExt_Cp <- xfer_area_Cp$xferExt
+ #map result
+ 
+ ###Make map of transfer
+bb_Cp <-  bgExt_Cp@bbox
+bbZoom <- polyZoom(bb_Cp[1, 1], bb_Cp[2, 1], bb_Cp[1, 2], 
+                   bb_Cp[2, 2], fraction = 0.05)
+mapXferVals_Cp <- getRasterVals(xfer_area_Cp$xferArea,"cloglog")
+rasCols_Cp <- c("#2c7bb6", "#abd9e9", "#ffffbf", "#fdae61", "#d7191c")
+# if no threshold specified
+legendPal <- colorNumeric(rev(rasCols_Cp), mapXferVals_Cp, na.color = 'transparent')
+rasPal_Cp <- colorNumeric(rasCols_Cp, mapXferVals_Cp, na.color = 'transparent')
+m <- leaflet() %>% addProviderTiles(providers$Esri.WorldTopoMap) 
+m %>%
+  fitBounds(bbZoom[1], bbZoom[2], bbZoom[3], bbZoom[4]) %>%
+  leaflet::addLegend("bottomright", pal = legendPal,
+            title = "Predicted Suitability<br>(Transferred)",
+            values = mapXferVals_Cp, layerId = 'xfer',
+            labFormat = reverseLabel(2, reverse_order = TRUE)) %>%
+# map model prediction raster and transfer polygon
+  clearMarkers() %>% clearShapes() %>% removeImage('xferRas') %>%
+  addRasterImage(xfer_area_Cp$xferArea, colors = rasPal_Cp, opacity = 0.7,
+                 layerId = 'xferRas', group = 'xfer', method = "ngb") %>%
+ ##add transfer polygon (user drawn area)
+  addPolygons(data = xfer_draw_Cp, fill = FALSE,
+              weight = 4, color = "blue", group = 'xfer')
+```
+
+------------------------------------------------------------------------
+
+## Analysis for *Stenella attenuata* (Sa)
+
+### Obtain Occurrence Data
+
+You searched the gbif database for *Stenella attenuata*, limited to 5000
+records. You decided to remove occurrences without uncertainty
+information? FALSE
+
+```{r}
+# Query selected database for occurrence records
+queryDb_Sa <- occs_queryDb(
+  spNames = "Stenella attenuata", 
+  occDb = "gbif", 
+  occNum = 5000,
+  RmUncertain = FALSE)
+occs_Sa <- queryDb_Sa$Stenella_attenuata$cleaned
+```
+
+### Obtain environmental data
+
+Using user-specified variables.
+
+```{r}
+## Specify the directory with the environmental variables
+dir_envs_Sa <- "D:/Wallace/GIT/MARSPECTca"
+envs_path <- file.path(dir_envs_Sa, c('b1_EastWestAspect.tif', 'b2_NorthSouthAspect.tif', 'b3_PlanCurvature.tif', 'b4_ProfileCurvature.tif', 'b5_DistancetoShore.tif', 'b6_BathymetricSlope.tif', 'b7_Concavity.tif', 'b8_MeanAnnualSSS.tif', 'b9_MinimumMonthlySSS.tif', 'b10_MaximumMonthlySSS.tif', 'b11_AnnualRangeSSS.tif', 'b12_AnnualVarianceSSS.tif', 'b13_MeanAnnualSST.tif', 'b14_SSTcoldestIceFreeMonth.tif', 'b15_SSTwarmestIceFreeMonth.tif', 'b16_AnnualRangeSST.tif', 'b17_AnnualVarianceSST.tif', 'bathymetry_30s.tif'))
+# Create environmental object 
+envs_Sa <- envs_userEnvs(
+  rasPath = envs_path,
+  rasName = c('b1_EastWestAspect.tif', 'b2_NorthSouthAspect.tif', 'b3_PlanCurvature.tif', 'b4_ProfileCurvature.tif', 'b5_DistancetoShore.tif', 'b6_BathymetricSlope.tif', 'b7_Concavity.tif', 'b8_MeanAnnualSSS.tif', 'b9_MinimumMonthlySSS.tif', 'b10_MaximumMonthlySSS.tif', 'b11_AnnualRangeSSS.tif', 'b12_AnnualVarianceSSS.tif', 'b13_MeanAnnualSST.tif', 'b14_SSTcoldestIceFreeMonth.tif', 'b15_SSTwarmestIceFreeMonth.tif', 'b16_AnnualRangeSST.tif', 'b17_AnnualVarianceSST.tif', 'bathymetry_30s.tif'),
+  doBrick = FALSE)
+occs_xy_Sa <- occs_Sa[c('longitude', 'latitude')]
+occs_vals_Sa <- as.data.frame(raster::extract(envs_Sa, occs_xy_Sa, cellnumbers = TRUE))
+# Remove duplicated same cell values
+occs_Sa <- occs_Sa[!duplicated(occs_vals_Sa[, 1]), ]
+occs_vals_Sa <- occs_vals_Sa[!duplicated(occs_vals_Sa[, 1]), -1]
+# remove occurrence records with NA environmental values
+occs_Sa <- occs_Sa[!(rowSums(is.na(occs_vals_Sa)) >= 1), ]
+# also remove variable value rows with NA environmental values
+occs_vals_Sa <- na.omit(occs_vals_Sa)
+# add columns for env variable values for each occurrence record
+occs_Sa <- cbind(occs_Sa, occs_vals_Sa)
+```
+
+### Process Occurrence Data
+
+Remove occurrences outside of user drawn polygon
+
+```{r}
+occs_Sa <- poccs_selectOccs(
+  occs = occs_Sa,
+  polySelXY = matrix(c(-78.576991, -82.31338, -82.13755, -78.313246, -77.653884, -76.071414, -75.016433, -73.653751, -71.236088, -67.455742, -63.103949, -61.521478, -61.433563, -62.708331, -63.147906, -63.499566, -64.290801, -78.576991, 17.012798, 14.942795, 10.442572, 10.010101, 9.143452, 10.053374, 11.521069, 11.133266, 13.32348, 11.693256, 11.607176, 12.681205, 14.177189, 16.25489, 17.096823, 18.018569, 17.976774, 17.012798), ncol = 2, byrow = FALSE),
+  polySelID = 4817)
+```
+
+### Process environmental data
+
+Sampling of 100 background points and corresponding environmental data
+using a user drawn background extent with a 0 degree buffer.
+
+```{r}
+# Create a background extent based on user drawn polygon
+bgExt_Sa <- penvs_drawBgExtent(
+  polyExtXY = matrix(c(-80.071559, -82.665052, -82.665052, -81.170497, -78.401174, -78.168427, -77.662916, -76.135392, -75.739775, -75.080412, -74.497975, -73.662782, -72.585823, -71.607769, -69.434351, -68.060679, -65.115526, -62.56599, -61.51101, -61.693613, -62.572763, -64.111276, -68.023494, -71.408222, -74.79295, -78.177679, -79.452446, -80.071559, 16.928734, 14.815379, 11.262592, 9.75034, 9.793648, 9.426879, 9.144978, 9.719378, 10.573716, 11.134782, 11.231781, 11.382604, 12.038817, 12.671994, 12.822012, 11.705526, 10.951473, 11.350292, 13.656162, 16.043834, 17.51638, 17.976774, 17.264761, 17.432545, 17.264761, 17.264761, 17.432545, 16.928734),ncol=2,byrow=FALSE), 
+  polyExtID = 6923, 
+  drawBgBuf = 0, 
+  occs = occs_Sa)
+# Mask environmental data to provided extent
+bgMask_Sa <- penvs_bgMask(
+  occs = occs_Sa,
+  envs = envs_Sa,
+  bgExt = bgExt_Sa)
+# Sample background points from the provided area
+bgSample_Sa <- penvs_bgSample(
+  occs = occs_Sa,
+  bgMask =  bgMask_Sa,
+  bgPtsNum = 100)
+# Extract values of environmental layers for each background point
+bgEnvsVals_Sa <- as.data.frame(raster::extract(bgMask_Sa,  bgSample_Sa))
+##Add extracted values to background points table
+bgEnvsVals_Sa <- cbind(scientific_name = paste0("bg_", "Stenella attenuata"), bgSample_Sa,
+                            occID = NA, year = NA, institution_code = NA, country = NA,
+                            state_province = NA, locality = NA, elevation = NA,
+                            record_type = NA, bgEnvsVals_Sa)
+```
+
+### Partition occurrence data
+
+Partition occurrences and background points for model training and
+validation using “checkerboard”, a spatial partition method with an
+aggregation factor of 2.
+
+```{r}
+# R code to get partitioned data
+groups_Sa <- part_partitionOccs(
+  occs = occs_Sa ,
+  bg =  bgSample_Sa, 
+  method = "cb1",
+  bgMask = bgMask_Sa,
+  aggFact = 2) 
+```
+
+### Build and Evaluate Niche Model
+
+Generating a species distribution model using the maxnet algorithm as
+implemented in ENMeval V2.0 (with clamping = FALSE). For tuning using L,
+H feature classes and regularization multipliers in the 1, 2 range
+increasing by 1. Not using any categorical predictor variables.
+
+```{r}
+# Run maxent model for the selected species
+model_Sa <- model_maxent(
+  occs = occs_Sa,
+  bg = bgEnvsVals_Sa,
+  user.grp = groups_Sa, 
+  bgMsk = bgMask_Sa,
+  rms = c(1, 2), 
+  rmsStep =  1,
+  fcs = c('L', 'H'),
+  clampSel = FALSE,
+  algMaxent = "maxnet",
+  parallel = FALSE,
+  numCores = 11)
+```
+
+### Visualize
+
+Generate a map of the maxnet generated model with with a “p10” threshold
+rule of 0.54760724560838.
+
+```{r}
+# Select current model and obtain raster prediction
+m_Sa <- model_Sa@models[["fc.H_rm.1"]] 
+predSel_Sa <- predictMaxnet(m_Sa, bgMask_Sa,
+                                          type = "cloglog", 
+                                          clamp = FALSE)
+# extract the suitability values for all occurrences
+occs_xy_Sa <- occs_Sa[c('longitude', 'latitude')]
+# determine the threshold based on the current prediction
+occPredVals_Sa <- raster::extract(predSel_Sa, occs_xy_Sa)
+# Define probability of quantile based on selected threshold
+thresProb_Sa <- switch("p10", 
+                              "mtp" = 0, "p10" = 0.1, "qtp" = 0)
+# Define threshold value
+thres_Sa <- stats::quantile(occPredVals_Sa, probs = thresProb_Sa)
+# Applied selected threshold
+predSel_Sa <- predSel_Sa > thres_Sa
+
+# Get values of prediction
+mapPredVals_Sa <- getRasterVals(predSel_Sa, "cloglog")
+# Define colors and legend  
+rasCols <- c("#2c7bb6", "#abd9e9", "#ffffbf", "#fdae61", "#d7191c")
+legendPal <- colorNumeric(rev(rasCols), mapPredVals_Sa, na.color = 'transparent')
+rasPal <- c('gray', 'blue')
+# Generate map
+m <- leaflet() %>% addProviderTiles(providers$Esri.WorldTopoMap) 
+m  %>%
+  leaflet::addLegend("bottomright", colors = c('gray', 'blue'),
+            title = "Thresholded Suitability<br>(Training)",
+            labels = c("predicted absence", "predicted presence"),
+            opacity = 1, layerId = "train") %>% 
+  #add occurrence data
+  addCircleMarkers(data = occs_Sa, lat = ~latitude, lng = ~longitude,
+                   radius = 5, color = 'red', fill = TRUE, fillColor = "red",
+                   fillOpacity = 0.2, weight = 2, popup = ~pop) %>% 
+  ##Add model prediction
+  addRasterImage(predSel_Sa, colors = rasPal, opacity = 0.7,
+                 group = 'vis', layerId = 'mapPred', method = "ngb") %>%
+ ##add background polygons
+  addPolygons(data = bgExt_Sa, fill = FALSE,
+              weight = 4, color = "blue", group = 'proj')
+```
+
+------------------------------------------------------------------------
+
+## ESPACE analysis for *Carcharhinus perezi* and *Stenella attenuata* (Cp_Sa)
+
+### Environmental space
+
+Performing and plotting principal component analysis to reduce
+dimensionality of environmental space for *Carcharhinus perezi* &
+*Stenella attenuata*. PCA done for occsBg.
+
+```{r}
+# Determine the variables to use
+pcaSel_Cp_Sa <- c('b1_EastWestAspect', 'b2_NorthSouthAspect', 'b3_PlanCurvature', 'b4_ProfileCurvature', 'b5_DistancetoShore', 'b6_BathymetricSlope', 'b7_Concavity', 'b8_MeanAnnualSSS', 'b9_MinimumMonthlySSS', 'b10_MaximumMonthlySSS', 'b11_AnnualRangeSSS', 'b12_AnnualVarianceSSS', 'b13_MeanAnnualSST', 'b14_SSTcoldestIceFreeMonth', 'b15_SSTwarmestIceFreeMonth', 'b16_AnnualRangeSST', 'b17_AnnualVarianceSST', 'bathymetry_30s')
+# Run the pca
+espace_pca_Cp_Sa <- espace_pca(
+  sp.name1 = "Carcharhinus perezi",
+  sp.name2 = "Stenella attenuata", 
+  occs.z1 = occs_Cp[,pcaSel_Cp_Sa],
+  occs.z2 = occs_Sa[,pcaSel_Cp_Sa],
+  bgPts.z1 = bgEnvsVals_Cp[,pcaSel_Cp_Sa],
+  bgPts.z2 = bgEnvsVals_Sa[,pcaSel_Cp_Sa])
+
+## Generate plots
+# PCA Scatter Plot
+if ("occsBg" == "occs") {
+  x <- espace_pca_Cp_Sa$scores[espace_pca_Cp_Sa$scores$bg == 'sp', ]
+  x.f <- factor(x$sp)
+} else if ("occsBg" == "occsBg") {
+  x <- espace_pca_Cp_Sa$scores[espace_pca_Cp_Sa$scores$sp == 'bg', ]
+  x.f <- factor(x$bg)
+}
+ade4::s.class(x, x.f, xax = 1, yax = 2,
+              col = c("red", "blue"), cstar = 0, cpoint = 0.1)
+title(xlab = paste0("PC", 1), ylab = paste0("PC", 2))
+# PCA Correlation circle
+ade4::s.corcircle(espace_pca_Cp_Sa$co, xax = 1, yax = 2,
+                  lab = pcaSel_Cp_Sa, full = FALSE, box = TRUE)
+      title(xlab = paste0("PC", 1),
+            ylab = paste0("PC", 2))
+# PCA screeplot
+screeplot(espace_pca_Cp_Sa, main = NULL)
+# Print PCA summary of results
+summary(espace_pca_Cp_Sa)
+```
